@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard · SeizureShield</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body>
+  <div class="layout">
+    <div id="sidebar-slot"></div>
+
+    <main class="main">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">Overview</div>
+          <h1 id="doctor-name">&nbsp;</h1>
+          <p class="subtitle">Patients assigned to you, and their most recent analysis.</p>
+        </div>
+        <a href="upload.html" class="btn">Upload EEG</a>
+      </div>
+
+      <div class="stats">
+        <div class="stat">
+          <div class="value" id="stat-patients">–</div>
+          <div class="label">Patients under your care</div>
+        </div>
+        <div class="stat">
+          <div class="value warn" id="stat-flagged">–</div>
+          <div class="label">Currently flagged preictal</div>
+        </div>
+        <div class="stat">
+          <div class="value" id="stat-analyses">–</div>
+          <div class="label">Analyses run</div>
+        </div>
+      </div>
+
+      <h2 style="font-size:20px;margin-bottom:14px">Patient roster</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Patient</th>
+              <th>Age / Sex</th>
+              <th>Latest status</th>
+              <th>Confidence</th>
+              <th>Last analysed</th>
+            </tr>
+          </thead>
+          <tbody id="roster">
+            <tr>
+              <td colspan="5" class="muted" style="padding:32px;text-align:center">Loading…</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/layout.js"></script>
+  <script>
+    if (initLayout("dashboard")) load();
+
+    async function load() {
+      document.getElementById("doctor-name").textContent = auth.doctor()?.name || "Doctor";
+
+      try {
+        const [patients, analyses] = await Promise.all([
+          api.listPatients(),
+          api.listAnalyses(),
+        ]);
+
+        // Latest analysis per patient, so the roster shows current state
+        const latest = {};
+        for (const a of analyses) {          // already newest-first from the API
+          if (!latest[a.patientId]) latest[a.patientId] = a;
+        }
+
+        document.getElementById("stat-patients").textContent = patients.length;
+        document.getElementById("stat-analyses").textContent = analyses.length;
+        document.getElementById("stat-flagged").textContent =
+          Object.values(latest).filter(a => a.prediction.predictedClass === "preictal").length;
+
+        const body = document.getElementById("roster");
+        if (!patients.length) {
+          body.innerHTML = `<tr><td colspan="5">
+            <div class="empty"><h3>No patients yet</h3>
+            <p>Add a patient from the Patients page to start running analyses.</p></div>
+          </td></tr>`;
+          return;
+        }
+
+        body.innerHTML = patients.map(p => {
+          const a = latest[p.id];
+          return `<tr class="clickable" onclick="location.href='patient-detail.html?id=${p.id}'">
+            <td><strong>${p.name}</strong></td>
+            <td>${p.age} / ${p.sex}</td>
+            <td>${statusBadge(a ? a.prediction.status : null)}</td>
+            <td>${a ? (a.prediction.confidence * 100).toFixed(1) + "%" : "—"}</td>
+            <td class="muted">${a ? formatDate(a.createdAt) : "—"}</td>
+          </tr>`;
+        }).join("");
+      } catch (e) {
+        document.getElementById("roster").innerHTML =
+          `<tr><td colspan="5" class="muted" style="padding:32px;text-align:center">${e.message}</td></tr>`;
+      }
+    }
+  </script>
+</body>
+
+</html>

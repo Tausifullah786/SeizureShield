@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Patients · SeizureShield</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body>
+  <div class="layout">
+    <div id="sidebar-slot"></div>
+
+    <main class="main">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">Care list</div>
+          <h1>Patients</h1>
+          <p class="subtitle">Only the patients assigned to you are listed here.</p>
+        </div>
+        <button class="btn" onclick="openModal()">Add patient</button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Patient</th>
+              <th>Age</th>
+              <th>Sex</th>
+              <th>City</th>
+              <th>Latest status</th>
+              <th>Analyses</th>
+            </tr>
+          </thead>
+          <tbody id="list">
+            <tr>
+              <td colspan="6" class="muted" style="padding:32px;text-align:center">Loading…</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <!-- Add patient modal -->
+  <div class="modal-bg" id="modal">
+    <div class="modal">
+      <h2>Add patient</h2>
+      <div id="modal-error" class="alert error hidden"></div>
+
+      <div class="field">
+        <label for="p-name">Full name</label>
+        <input type="text" id="p-name">
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="p-age">Age</label>
+          <input type="number" id="p-age" min="0" max="120">
+        </div>
+        <div class="field">
+          <label for="p-sex">Sex</label>
+          <select id="p-sex">
+            <option value="M">Male</option>
+            <option value="F">Female</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="p-city">City</label>
+        <input type="text" id="p-city">
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn" id="save">Save patient</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/layout.js"></script>
+  <script>
+    if (initLayout("patients")) load();
+
+    async function load() {
+      const body = document.getElementById("list");
+      try {
+        const patients = await api.listPatients();
+        if (!patients.length) {
+          body.innerHTML = `<tr><td colspan="6">
+            <div class="empty"><h3>No patients yet</h3>
+            <p>Add your first patient to start uploading recordings.</p></div>
+          </td></tr>`;
+          return;
+        }
+        body.innerHTML = patients.map(p => `
+          <tr class="clickable" onclick="location.href='patient-detail.html?id=${p.id}'">
+            <td><strong>${p.name}</strong></td>
+            <td>${p.age}</td><td>${p.sex}</td><td>${p.city}</td>
+            <td>${statusBadge(p.latestStatus)}</td>
+            <td>${p.analysesCount}</td>
+          </tr>`).join("");
+      } catch (e) {
+        body.innerHTML = `<tr><td colspan="6" class="muted" style="padding:32px;text-align:center">${e.message}</td></tr>`;
+      }
+    }
+
+    const modal = document.getElementById("modal");
+    const modalError = document.getElementById("modal-error");
+
+    function openModal() { modal.classList.add("open"); }
+    function closeModal() {
+      modal.classList.remove("open");
+      modalError.classList.add("hidden");
+    }
+
+    document.getElementById("save").onclick = async () => {
+      modalError.classList.add("hidden");
+      const btn = document.getElementById("save");
+      btn.disabled = true;
+      try {
+        await api.createPatient({
+          name: document.getElementById("p-name").value.trim(),
+          age: parseInt(document.getElementById("p-age").value, 10),
+          sex: document.getElementById("p-sex").value,
+          city: document.getElementById("p-city").value.trim(),
+        });
+        closeModal();
+        document.getElementById("p-name").value = "";
+        document.getElementById("p-age").value = "";
+        document.getElementById("p-city").value = "";
+        load();
+      } catch (e) {
+        modalError.textContent = e.message;
+        modalError.classList.remove("hidden");
+      } finally {
+        btn.disabled = false;
+      }
+    };
+  </script>
+</body>
+
+</html>

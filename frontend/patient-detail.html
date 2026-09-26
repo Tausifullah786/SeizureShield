@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Patient · SeizureShield</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body>
+  <div class="layout">
+    <div id="sidebar-slot"></div>
+
+    <main class="main">
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">Patient record</div>
+          <h1 id="name">Loading…</h1>
+          <p class="subtitle" id="meta">&nbsp;</p>
+        </div>
+        <a class="btn" id="upload-link" href="#">Upload EEG</a>
+      </div>
+
+      <div id="error" class="alert error hidden"></div>
+
+      <h2 style="font-size:20px;margin-bottom:14px">Analysis history</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Result</th>
+              <th>Confidence</th>
+              <th>Windows</th>
+              <th>File</th>
+            </tr>
+          </thead>
+          <tbody id="list">
+            <tr>
+              <td colspan="5" class="muted" style="padding:32px;text-align:center">Loading…</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p style="margin-top:24px">
+        <button class="btn secondary" id="delete">Delete patient</button>
+      </p>
+    </main>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/layout.js"></script>
+  <script>
+    const id = new URLSearchParams(location.search).get("id");
+    if (initLayout("patients")) load();
+
+    async function load() {
+      if (!id) return showError("No patient specified.");
+      document.getElementById("upload-link").href = `upload.html?patient=${id}`;
+
+      try {
+        const [p, analyses] = await Promise.all([
+          api.getPatient(id),
+          api.listAnalyses(id),
+        ]);
+
+        document.getElementById("name").textContent = p.name;
+        document.getElementById("meta").textContent =
+          `${p.age} years · ${p.sex} · ${p.city} · ${p.analysesCount} analyses`;
+
+        const body = document.getElementById("list");
+        if (!analyses.length) {
+          body.innerHTML = `<tr><td colspan="5">
+            <div class="empty"><h3>No analyses yet</h3>
+            <p>Upload an EEG recording to run the model.</p></div>
+          </td></tr>`;
+          return;
+        }
+        body.innerHTML = analyses.map(a => `
+          <tr class="clickable" onclick="location.href='result.html?id=${a.id}'">
+            <td class="muted">${formatDate(a.createdAt)}</td>
+            <td>${statusBadge(a.prediction.status)}</td>
+            <td>${(a.prediction.confidence * 100).toFixed(1)}%</td>
+            <td>${a.windowsAnalysed}</td>
+            <td class="muted">${a.csvFileName}</td>
+          </tr>`).join("");
+      } catch (e) {
+        showError(e.message);
+      }
+    }
+
+    document.getElementById("delete").onclick = async () => {
+      if (!confirm("Delete this patient and all their analyses? This cannot be undone.")) return;
+      try {
+        await api.deletePatient(id);
+        window.location.href = "patients.html";
+      } catch (e) { showError(e.message); }
+    };
+
+    function showError(message) {
+      const box = document.getElementById("error");
+      box.textContent = message;
+      box.classList.remove("hidden");
+    }
+  </script>
+</body>
+
+</html>

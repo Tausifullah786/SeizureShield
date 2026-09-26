@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · SeizureShield</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <!-- Google block 1 of 2 -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+
+<body>
+  <div class="auth-wrap">
+    <div class="auth-box">
+      <div class="logo">Seizure<span>Shield</span></div>
+      <p class="tag">Sign in to your clinician account.</p>
+
+      <div id="error" class="alert error hidden"></div>
+
+      <div class="field">
+        <label for="email">Email</label>
+        <input type="email" id="email" autocomplete="email">
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" autocomplete="current-password">
+      </div>
+
+      <button class="btn" style="width:100%" id="submit">Sign in</button>
+
+      <!-- Google block 2 of 2 -->
+      <div class="divider">or</div>
+      <div id="g_id_onload" data-client_id="573188191346-dj4uvl3an6eurad7u50rhbjdc9l8sflq.apps.googleusercontent.com"
+        data-callback="handleGoogleLogin" data-auto_prompt="false"></div>
+      <div class="g_id_signin" data-type="standard" data-width="340" data-text="signin_with" data-shape="rectangular">
+      </div>
+
+      <p class="auth-foot">No account? <a href="signup.html">Create one</a></p>
+    </div>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script>
+    const errorBox = document.getElementById("error");
+
+    function showError(message) {
+      errorBox.textContent = message;
+      errorBox.classList.remove("hidden");
+    }
+
+    async function doLogin() {
+      errorBox.classList.add("hidden");
+      const btn = document.getElementById("submit");
+      btn.disabled = true;
+      try {
+        const data = await api.login({
+          email: document.getElementById("email").value.trim(),
+          password: document.getElementById("password").value,
+        });
+        auth.save(data.access_token, data.doctor);
+        window.location.href = "dashboard.html";
+      } catch (e) {
+        showError(e.message);
+        btn.disabled = false;
+      }
+    }
+
+    async function handleGoogleLogin(response) {
+      try {
+        const data = await api.google(response.credential);
+        auth.save(data.access_token, data.doctor);
+        window.location.href = "dashboard.html";
+      } catch (e) {
+        showError(e.message);
+      }
+    }
+
+    document.getElementById("submit").onclick = doLogin;
+    document.getElementById("password").addEventListener("keydown", e => {
+      if (e.key === "Enter") doLogin();
+    });
+
+    // Already signed in? Skip the form.
+    if (auth.token()) window.location.href = "dashboard.html";
+  </script>
+</body>
+
+</html>

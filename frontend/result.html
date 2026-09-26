@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Analysis result · SeizureShield</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body>
+  <div class="layout">
+    <div id="sidebar-slot"></div>
+
+    <main class="main">
+      <div class="eyebrow">Analysis result</div>
+      <h1 id="title">Loading…</h1>
+      <p class="subtitle" id="subtitle">&nbsp;</p>
+
+      <div id="error" class="alert error hidden"></div>
+      <div id="content" class="hidden">
+
+        <!-- ============ MODEL PREDICTION ============ -->
+        <div class="section-label">Model prediction</div>
+        <div class="verdict" id="verdict">
+          <div>
+            <div class="headline" id="verdict-class"></div>
+            <div class="meta" id="verdict-meta"></div>
+          </div>
+          <div class="conf">
+            <div class="num" id="verdict-conf"></div>
+            <div class="meta">confidence</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="kv">
+            <div>
+              <div class="k">Patient</div>
+              <div class="v" id="kv-patient"></div>
+            </div>
+            <div>
+              <div class="k">File</div>
+              <div class="v" id="kv-file"></div>
+            </div>
+            <div>
+              <div class="k">Windows analysed</div>
+              <div class="v" id="kv-windows"></div>
+            </div>
+            <div>
+              <div class="k">Decision threshold</div>
+              <div class="v" id="kv-thr"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ MODEL EXPLANATION ============ -->
+        <div class="section-label">Model explanation</div>
+
+        <div class="card">
+          <h2>What influenced this prediction</h2>
+          <p id="xai-summary" style="margin-bottom:18px"></p>
+          <div class="chips" id="xai-chips"></div>
+          <p class="muted" style="margin-top:16px;font-size:14px">
+            Method: <span id="xai-method"></span> ·
+            <!-- Baseline: <span id="xai-baseline"></span> ·
+            Convergence delta: <span id="xai-delta"></span> -->
+          </p>
+        </div>
+
+        <div class="card">
+          <h2>Channel importance</h2>
+          <p class="muted" style="font-size:14px;margin-bottom:16px">
+            How much each electrode pair contributed, relative to the strongest.
+          </p>
+          <canvas id="chart-channels"></canvas>
+        </div>
+
+        <div class="card">
+          <h2>Importance over time</h2>
+          <p class="muted" style="font-size:14px;margin-bottom:16px">
+            Shaded bands mark the periods that most influenced the decision.
+          </p>
+          <canvas id="chart-time"></canvas>
+          <div id="regions" style="margin-top:16px"></div>
+        </div>
+
+        <div class="card">
+          <h2>Attribution heatmap</h2>
+          <p class="muted" style="font-size:14px;margin-bottom:16px">
+            Every channel across the recording window. Darker means more influential.
+          </p>
+          <canvas id="chart-heatmap"></canvas>
+          <div class="legend"><span>Low</span>
+            <div class="scale"></div><span>High</span>
+          </div>
+<!-- 
+          <details class="raw">
+            <summary>Show raw attribution values</summary>
+            <pre id="raw-json"></pre>
+          </details> -->
+        </div>
+
+        <div class="disclaimer">
+          This visualization explains the AI model's prediction and does not replace
+          clinical interpretation by a qualified medical professional.
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/layout.js"></script>
+  <script src="js/charts.js"></script>
+  <script>
+    if (initLayout("history")) load();
+
+    async function load() {
+      const id = new URLSearchParams(location.search).get("id");
+      if (!id) return fail("No analysis specified.");
+
+      try {
+        const a = await api.getAnalysis(id);
+        render(a);
+      } catch (e) {
+        fail(e.message);
+      }
+    }
+
+    function fail(message) {
+      document.getElementById("title").textContent = "Analysis";
+      const box = document.getElementById("error");
+      box.textContent = message;
+      box.classList.remove("hidden");
+    }
+
+    function render(a) {
+      const p = a.prediction;
+      const x = a.explainability;
+
+      document.getElementById("title").textContent = a.patientName;
+      document.getElementById("subtitle").textContent = formatDate(a.createdAt);
+
+      // ---- prediction ----
+      const cls = p.predictedClass;
+      document.getElementById("verdict").classList.add(cls);
+      const headline = document.getElementById("verdict-class");
+      headline.textContent = p.status;
+      headline.classList.add(cls);
+      document.getElementById("verdict-meta").textContent =
+        `Classified as ${cls} · P(preictal) = ${p.probability.toFixed(3)}`;
+      document.getElementById("verdict-conf").textContent =
+        (p.confidence * 100).toFixed(1) + "%";
+
+      document.getElementById("kv-patient").textContent = a.patientName;
+      document.getElementById("kv-file").textContent = a.csvFileName;
+      document.getElementById("kv-windows").textContent = a.windowsAnalysed;
+      document.getElementById("kv-thr").textContent = p.threshold;
+
+      document.getElementById("content").classList.remove("hidden");
+
+      // ---- explainability (older analyses may not have it) ----
+      if (!x) {
+        document.querySelectorAll(".section-label")[1].textContent =
+          "Model explanation — not available for this analysis";
+        return;
+      }
+
+      document.getElementById("xai-summary").textContent = x.summary;
+      document.getElementById("xai-chips").innerHTML =
+        x.topChannels.map(c => `<span class="chip">${c}</span>`).join("");
+      document.getElementById("xai-method").textContent = x.method;
+      // document.getElementById("xai-baseline").textContent = x.baseline;
+      // document.getElementById("xai-delta").textContent = x.convergenceDelta;
+
+      drawChannelBars("chart-channels", x.channelImportance, x.topChannels);
+      drawTimeChart("chart-time", x.timeImportance, x.importantTimeRegions);
+      drawHeatmap("chart-heatmap", x.heatmap, x.channels);
+
+      document.getElementById("regions").innerHTML = x.importantTimeRegions.map(r => `
+        <div style="display:flex;gap:14px;align-items:center;padding:8px 0;border-top:1px solid #e2e8f0">
+          <strong>${r.startSec}s – ${r.endSec}s</strong>
+          <span class="muted">timesteps ${r.start}–${r.end}</span>
+          <span style="margin-left:auto" class="muted">importance ${r.importance}</span>
+        </div>`).join("");
+
+      // document.getElementById("raw-json").textContent =
+      //   JSON.stringify({
+      //     channelImportance: x.channelImportance,
+      //     importantTimeRegions: x.importantTimeRegions
+      //   }, null, 2);
+    }
+  </script>
+</body>
+
+</html>

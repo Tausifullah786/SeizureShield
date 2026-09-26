@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Upload EEG · SeizureShield</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body>
+  <div class="layout">
+    <div id="sidebar-slot"></div>
+
+    <main class="main">
+      <div class="eyebrow">New analysis</div>
+      <h1>Upload EEG</h1>
+      <p class="subtitle">CSV with 23 bipolar channels, 1024 rows per 4-second window.</p>
+
+      <div class="card" style="max-width:560px">
+        <div id="error" class="alert error hidden"></div>
+        <div id="busy" class="alert info hidden">
+          Running the model and computing explainability… this takes a few seconds.
+        </div>
+
+        <div class="field">
+          <label for="patient">Patient</label>
+          <select id="patient">
+            <option>Loading…</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="file">EEG CSV file</label>
+          <input type="file" id="file" accept=".csv">
+        </div>
+
+        <button class="btn" id="run" style="width:100%">Run analysis</button>
+      </div>
+    </main>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/layout.js"></script>
+  <script>
+    if (initLayout("dashboard")) load();
+
+    const errorBox = document.getElementById("error");
+    const busyBox = document.getElementById("busy");
+
+    async function load() {
+      const select = document.getElementById("patient");
+      try {
+        const patients = await api.listPatients();
+        if (!patients.length) {
+          select.innerHTML = `<option value="">No patients — add one first</option>`;
+          return;
+        }
+        select.innerHTML = patients
+          .map(p => `<option value="${p.id}">${p.name} — ${p.age}/${p.sex}</option>`)
+          .join("");
+
+        // Preselect if we arrived from a patient page
+        const preset = new URLSearchParams(location.search).get("patient");
+        if (preset) select.value = preset;
+      } catch (e) {
+        select.innerHTML = `<option value="">${e.message}</option>`;
+      }
+    }
+
+    document.getElementById("run").onclick = async () => {
+      errorBox.classList.add("hidden");
+      const patientId = document.getElementById("patient").value;
+      const file = document.getElementById("file").files[0];
+
+      if (!patientId) return showError("Select a patient first.");
+      if (!file) return showError("Choose a CSV file.");
+      if (!file.name.toLowerCase().endsWith(".csv")) return showError("File must be a .csv");
+
+      const btn = document.getElementById("run");
+      btn.disabled = true;
+      busyBox.classList.remove("hidden");
+
+      try {
+        const result = await api.uploadAnalysis(patientId, file);
+        window.location.href = `result.html?id=${result.id}`;
+      } catch (e) {
+        showError(e.message);
+        btn.disabled = false;
+        busyBox.classList.add("hidden");
+      }
+    };
+
+    function showError(message) {
+      errorBox.textContent = message;
+      errorBox.classList.remove("hidden");
+    }
+  </script>
+</body>
+
+</html>
